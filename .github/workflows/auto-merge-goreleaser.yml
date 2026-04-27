@@ -18,12 +18,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  automerge:
-    name: Auto-merge trusted GoReleaser PR
+  verify:
+    name: Verify trusted GoReleaser PR
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.verify.outputs.pr-number }}
 
     steps:
       - name: Verify PR is an eligible GoReleaser cask update
@@ -79,10 +81,24 @@ jobs:
 
           echo "pr-number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
 
+  automerge:
+    name: Auto-merge trusted GoReleaser PR
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: goreleaser-automerge
+
+    steps:
+      - name: Create GoReleaser app token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Squash merge PR
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.verify.outputs.pr-number }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ needs.verify.outputs.pr-number }}
           REPO: ${{ github.repository }}
           VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
